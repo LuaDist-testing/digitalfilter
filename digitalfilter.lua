@@ -8,8 +8,8 @@
 -- given in Rorabaugh's "Digital Filter Designer's Handbook", pp.287-291.
 
 local M = {} -- public interface
-M.Version = '1.0'
-M.VersionDate = '17jul2017'
+M.Version = '1.4'
+M.VersionDate = '01aug2017'
 
 ------------------------------ private ------------------------------
 local function warn(...)
@@ -64,12 +64,10 @@ local function dump(x)
     return tost(x)
 end
 
--- Useful for mapping poles in the p=u+jv plane to the zm1=x+jy plane
--- these two could be the same function ! z=(1-p)/1+z) means p=(1-z)/(1+z)
+-- Unused.  For mapping poles in the p=u+jv plane to the zm1=x+jy plane
+-- note that  z=(1-p)/1+z) means p=(1-z)/(1+z) !
 local function freq_plane_to_zm1_plane (u,v)
-	--  p = u + jv     zm1 = x + jy   z = (1-p)/1+p)   from [5.12] pp.66,67
-	--  p has to be present to a pair u+jv  and  u-jv
-	--  we could try all combinations and not return the unstable ones...
+	--  p = u+jv   zm1 = x+jy   z = (1-p)/1+p)  Constantinides [5.12] pp.66,67
 	local denom = (1+u)^2 + v^2
 	if denom == 0 then return -1, math.huge ; end   -- defend against -1,0
 	local x = (1 - (u^2 + v^2)) / denom
@@ -77,26 +75,12 @@ local function freq_plane_to_zm1_plane (u,v)
 	return x, y
 end
 
-local function zm1_plane_to_freq_plane (x,y)
-	-- zm1 = x + jy     p = u + jv    p = (1-z)/(1+z)   [5.12] pp.66,67
-	local denom = (1+x)^2 + y^2
-	local u = (1 - (x^2 + y^2)) / denom
-	local v = -2*y / denom
-	return u, v
-end
-
-local function freq_pair_to_a012b12 (u,v)   -- frequency omega = u +-jv
-	-- Daniels p.16 Moschytz p.104 Temes/Mitra p. 337
-	-- Single-Pole Denominator = (s-u - j0)
-	-- Pole-Pair Denominator = (s-u - jv)*(s-u + jv) = s^2 -2us +u^2 + v^2
-	--  = u^2+v^2 -2us + s^2
-	--  = (u^2+v^2) * (1 - 2*u*s/(u^2+v^2) + s^2/(u^2+v^2))    since b0==1
-	-- simply to convert a pole pair to b012
-	if v == 0 then   -- single pole  see Moschytz p.116 Eqn. [7.5a]
-		return 1,0,0, -1*u, 0
-	else   -- pole-pair
-		return 1,0,0, -2*u/(u*u+v*v), u*u+v*v
-	end
+function M.pole_pair_to_freq_Q (u,v)   -- poles at (u+jv)*(u-jv) = u^2+v^2
+	-- pole-pair u +-jv  so  denominator is (s -u-jv)*(s -u+jv)
+	-- = u^2+v^2 -2*u*s + s^2 so, by Temes/Mitra p.337
+	local freq  = math.sqrt(u*u + v*v)
+	local Q     = freq / (-2 * u)
+	return freq, Q
 end
 
 function M.normalised_freq_poles(option)
@@ -104,14 +88,13 @@ function M.normalised_freq_poles(option)
 	-- Calculate Butterworth:  Daniels p.16 [2.25], Rorabaugh p.65 [3.2]
 	-- Calculate Bessel: Moschytz p.147, Daniels pp.249-289 Rorabaugh p.110,113
 	-- Chebyschev as function of ripple: Moschytz pp.138-140 Rorabaugh p.80
-	-- SEE Rorabaugh p.50 and for Laguerre's method to factorise Bessels pp.62-3
+	-- SEE Rorabaugh p.50 and Laguerre's method to factorise Bessels pp.62-3
 
 	-- u,v,u,v,u,v,...  non-zero imaginary part v means a pole-pair u +-jv
 	-- Active Filter Design Handbook, Moschytz and Horn, 1981, Wiley, p.130
 	-- Modern Low-Pass Filter Characteristics, Eggen and McAllister,
 	--    Electro-Technology, August 1966
-	if option['type'] == 'butterworth' then
-		-- Rorabaugh p.65 [3.2]
+	if option['type'] == 'butterworth' then -- Rorabaugh p.65 [3.2]
 		-- for i=1..n,  cos(pi*(2i+n-1)/(2n)) +- sin(pi*(2i+n-1)/(2n))
 		local poles = {}
 		local pi = math.pi
@@ -130,13 +113,13 @@ function M.normalised_freq_poles(option)
 			print(DataDumper(poles))
 		end
 		return poles
-	elseif string.match(option['type'], '^t?chebyschev') then
-		-- chebyschev: Rorabaugh p.79
+	elseif string.match(option['type'], '^t?chebyschev') then -- Rorabaugh p.79
 		local poles = {}
 		local pi = math.pi
 		local order = option['order']
 		local n_sections = math.floor((order+1.001) / 2)
 		local ripple = option['ripple'] or 1
+		if ripple < 0 then ripple = 0 - ripple end
 		local eta = math.sqrt(10^(ripple/10) - 1)   -- [4.8]
 		local gamma = ((1 + math.sqrt(1 + eta*eta))/eta)^(1/order)  -- [4.7]
 		for i = n_sections,1,-1 do
@@ -148,6 +131,7 @@ function M.normalised_freq_poles(option)
 		end
 		if option['debug'] then
 			print('ripple =',ripple,'eta =',eta, 'gamma =',gamma)
+			print(table.unpack(poles))
 		end
 		return poles
 	end
@@ -164,6 +148,18 @@ function M.normalised_freq_poles(option)
 		-- www.analog.com/media/en/training-seminars/design-handbooks/
 		-- www.crbond.com/papers/bsf.pdf
 		-- https://en.wikipedia.org/wiki/Bessel_function
+		-- NOTA BENE:
+		-- https://en.wikipedia.org/wiki/Bessel_filter#Digital   says:
+		-- As the important characteristic of a Bessel filter is its
+		-- maximally-flat group delay, and not the amplitude response,
+		-- it is inappropriate to use the bilinear transform to convert
+		-- the analog Bessel filter into a digital form (since this
+		-- preserves the amplitude response but not the group delay).
+		-- The digital equivalent is the Thiran filter, an all-pole lowpass
+		-- filter with maximally-flat group delay, which can be transformed
+		-- into an allpass filter to implement fractional delays
+		-- http://www-users.cs.york.ac.uk/~fisher/mkfilter/mzt.html
+
 		['bessel'] = {   -- https://en.wikipedia.org/wiki/Bessel_polynomials
 		--	[1] = {-1.0, 0},        -- see Moschytz p.130
 		--	[2] = {-1.1016, 0.6364},
@@ -186,13 +182,6 @@ function M.normalised_freq_poles(option)
 	return freq_poles[option['type']][option['order']]
 end
 
-function M.pole_pair_to_freq_Q (u,v)   -- poles at (u+jv)*(u-jv) = u^2+v^2
-	-- pole-pair u +-jv  so  denominator is (s -u-jv)*(s -u+jv)
-	-- = u^2+v^2 -2*u*s + s^2 so, by Temes/Mitra p.337
-	local freq  = math.sqrt(u*u + v*v)
-	local Q     = freq / (-2 * u)
-	return freq, Q
-end
 
 function M.b0b1b2_to_freq_Q (b0,b1,b2)   -- Temes/Mitra p.337
 	local omega = math.sqrt(b0/b2)
@@ -376,7 +365,7 @@ digitalfilter.lua - Butterworth, Chebyschev and Bessel digital filters:
 =head1 SYNOPSIS
 
  local DF = require 'digitalfilter'
- local my_filter = DF.new_digitalfilter ({   --returns a closure
+ local my_filter = DF.new_digitalfilter ({   -- returns a closure
     ['type']        = 'butterworth',
     ['order']       = 3,
     ['shape']       = 'lowpass',
@@ -384,16 +373,17 @@ digitalfilter.lua - Butterworth, Chebyschev and Bessel digital filters:
     ['samplerate']  = 441000,
  })
  for i = 1,95 do
-    local u = (math.floor((i%16)/8   + 0.01)*2 - 1)  -- square wave
+    local u = (math.floor((i%16)/8 + 0.01)*2 - 1)  -- square wave
     local x = my_filter(u)
     if i >= 80 then print('my_filter('..u..') \t=', x) end
  end
 
 =head1 DESCRIPTION
 
-This module provides some Digital Filters - Butterworth, Chebyschev and Bessel
-in lowpass and highpass.
-Hopefully, Inverse Chebyschev, bandpass and bandstop will follow.
+This module provides some Digital Filters -
+Butterworth, Chebyschev and Bessel, in lowpass and highpass.
+Primitive bandpass and bandstop filters are provided,
+and hopefully, Inverse Chebyschev and Elliptic filters will follow.
 
 To quote
 https://en.wikipedia.org/wiki/Digital_filter
@@ -403,11 +393,11 @@ of their design and implementation are significant and are the subject
 of much advanced research."
 
 In the literature I have, the notation is often confusing.
-For example, in Temes/Mitra p.152 the general zm1 transfer-function is
-given with parameters A_2 in the numerator equal to zero.
+For example, in Temes/Mitra p.152 the general z^-1 transfer-function
+is given with parameters A_2 in the numerator equal to zero.
 Constantinides sometimes uses u and v to mean the real and imaginary
 parts of the frequency omega, and sometimes to mean the input and output
-signals of a digital filter.
+signals of a digital filter;
 Rorabaugh, however, (p.156) uses X(z) and Y(z) to mean the input and output
 signals of a digital filter.
 Rorabaugh sometimes uses q to mean the quality of filter-section,
@@ -418,12 +408,18 @@ the coefficients of the transfer function in the z^-1-domain,
 but he often uses a and b to mean
 the coefficients of the transfer function in the z^-1-domain.
 Or, comparing Constantinides p.36 with Rorabaugh p.156,
-the meanings of a and b have been swapped, also the meanings of G(z) and H(z).
+the meanings of a and b have been swapped,
+as have the meanings of G(z) and H(z).
+In the I<sox> I<biquad b0 b1 b2 a0 a1 a2> option,
+I<b*> is numerator and I<a*> is denominator, agreeing with Rorabaugh,
+so I will sometime change my code over to use that "standard".
 
-This version of I<digitalfilter.lua> is an attempt to use the procedure
+This version of I<digitalfilter.lua> uses the procedure
 given in Rorabaugh's "Digital Filter Designer's Handbook", pp.287-291.
+Overall, while writing this module,
+I have found Rorabaugh's book to be the most helpful.
 
-=head1 THE TABLE OF OPTIONS
+=head1 TABLE OF OPTIONS
 
 =over 3
 
@@ -431,12 +427,12 @@ Various functions, including I<new_digitalfilter(options)>,
 need an argument to set the parameters;
 This argument is a table, with keys
 'type', 'order', 'shape', 'freq' and 'samplerate',
-and for basspass and bandstop also 'Q'.
+and for basspass and bandstop also 'Q'
 
 The 'type' can be 'butterworth', 'bessel', or 'chebyschev'.
 In the case of 'chebyschev' there is an additional option 'ripple'
 which specifies in decibels the desired ripple in the passband,
-defaulting to 1.
+defaulting to 1dB.
 
 The 'order' can currently be from 1 to 7 for all types,
 and this range will probably be extended.
@@ -451,6 +447,10 @@ It must be given in the same units as the 'samplerate'.
 A 'freq' greater than half the 'samplerate' is a mistake,
 but is implemented as setting the gain to zero for 'lowpass' or 'bandpass',
 or 1 for 'highpass' or 'bandstop'.
+For Butterworth and Bessel lowpass designs, the corner frequency is the
+frequency at which the magnitude of the response is -3 dB. For Chebyshev
+lowpass designs, the corner frequency is the highest frequency at which
+the magnitude of the response is equal to the specified ripple.
 
 The 'samplerate' is the sampling-frequency.
 For example in audio use 'samplerate' will often be 44100 or 48000.
@@ -458,6 +458,37 @@ For example in audio use 'samplerate' will often be 44100 or 48000.
 The 'Q' is only necessary for 'bandpass' and 'bandstop' shapes,
 and specifies the I<quality> of the pole.
 High 'Q' gives the filter a narrower resonance.
+
+=back
+
+=head1 FILTER TYPES
+
+=over 3
+
+=item I<butterworth>
+
+The Butterworth filter is designed
+to have as flat a frequency response as possible in the passband.
+It is also referred to as a maximally flat magnitude filter.
+It is very much used in audio work.
+
+https://en.wikipedia.org/wiki/Butterworth_filter
+
+=item I<chebyschev>
+
+Chebyshev filters have a much steeper roll-off than Butterworth filters.
+but have ripples in the frequency-response in the passband.
+
+https://en.wikipedia.org/wiki/Chebyshev_filter
+
+=item I<bessel>
+
+The Bessel filter is a type of linear filter with a maximally
+flat group/phase delay (maximally linear phase response),
+which preserves the wave shape of filtered signals in the passband.
+Bessel filters are often used in audio crossover systems.
+
+https://en.wikipedia.org/wiki/Bessel_filter
 
 =back
 
@@ -484,10 +515,37 @@ allowing the 'freq' parameter to be varied during use.
 
 =back
 
+=head1 CONSTANTS
+
+=over 3
+
+=item I<Version>
+
+The digitalfilter.lua version
+
+=item I<VersionDate>
+
+The release-date of this digitalfilter.lua version
+
+=back
+
 =head1 DOWNLOAD
 
-This module is available at
-http://www.pjb.com.au/comp/lua/digitalfilter.html
+This module is available as a LuaRock in
+<A HREF="http://luarocks.org/modules/peterbillam">
+luarocks.org/modules/peterbillam</A>
+so you should be able to install it with the command:
+
+ $ su
+ Password:
+ # luarocks install digitalfilter
+
+or:
+
+ # luarocks install http://www.pjb.com.au/comp/lua/digitalfilter-1.4-0.rockspec
+
+The test script used during development is
+www.pjb.com.au/comp/lua/test_digitalfilteR.lua
 
 =head1 AUTHOR
 
@@ -495,11 +553,18 @@ Peter J Billam, http://www.pjb.com.au/comp/contact.html
 
 =head1 CHANGES
 
- 20170719 1.0 place-holder; not working yet
- 20170722 1.1 bad bessel freq-resp, using Constantinides' book
+ 20170731 1.4 chebyschev filters added, but even orders not the right shape
+ 20170730 1.3 finally fix the bessel freq-resp bug
  20170729 1.2 the same bad bessel freq-resp, using Rorabaugh's book
+ 20170722 1.1 bad bessel freq-resp, using Constantinides' book
+ 20170719 1.0 place-holder; not working yet
 
 =head1 SEE ALSO
+
+ "Digital Filter Designer's Handbook", C. Bitton Rorabaugh,
+    TAB Books (McGraw-Hill) 
+ http://cdn.preterhuman.net/texts/engineering/Dsp/
+ http://www.pjb.com.au/comp/free/digital_filter_designers_handbook_1.pdf
 
  "Modern Filter Theory and Design", Gabor C. Temes and Sanjit K. Mitra,
     Wiley, 1973
@@ -509,10 +574,17 @@ Peter J Billam, http://www.pjb.com.au/comp/contact.html
     Wiley 1975
  "Active Filter Design Handbook", G.S. Moschytz and Petr Horn,
     Wiley, 1981
- "Digital Filter Designer's Handbook", C. Bitton Rorabaugh,
-    TAB Books (McGraw-Hill) 
- http://cdn.preterhuman.net/texts/engineering/Dsp/
  https://en.wikipedia.org/wiki/Digital_filter
+ https://en.wikipedia.org/wiki/Butterworth_filter
+ https://en.wikipedia.org/wiki/Chebyshev_filter
+ https://en.wikipedia.org/wiki/Bessel_function
+ https://en.wikipedia.org/wiki/Bessel_polynomials
+ https://en.wikipedia.org/wiki/Bessel_filter
+ https://en.wikipedia.org/wiki/Bessel_filter#Digital
+ http://www-users.cs.york.ac.uk/~fisher/mkfilter/trad.html
+ http://www-users.cs.york.ac.uk/~fisher/mkfilter/mzt.html
+ http://www.dsprelated.com
+ http://www.pjb.com.au/comp/lua/digitalfilter.html
  http://www.pjb.com.au/
 
 =cut

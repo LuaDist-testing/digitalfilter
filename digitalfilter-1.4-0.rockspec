@@ -1,16 +1,16 @@
 -- This file was automatically generated for the LuaDist project.
 
 package = "digitalfilter"
-version = "1.3-0"
+version = "1.4-0"
 -- LuaDist source
 source = {
-  tag = "1.3-0",
+  tag = "1.4-0",
   url = "git://github.com/LuaDist-testing/digitalfilter.git"
 }
 -- Original source
 -- source = {
---    url = "http://www.pjb.com.au/comp/lua/digitalfilter-1.3.tar.gz",
---    md5 = "1631f6b569b2a3f545243c0d076921a1"
+--    url = "http://www.pjb.com.au/comp/lua/digitalfilter-1.4.tar.gz",
+--    md5 = "32fe258c7e0fc1a82127d089180adece"
 -- }
 description = {
    summary = "some Digital Filters - Butterworth, Chebyschev and Bessel.",

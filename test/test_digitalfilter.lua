@@ -10,10 +10,11 @@
 -- 2) from freq,samplerate to k
 -- 3) from a0a1a2b0b1b2, k to A0A1A2B0B1B2   p.56
 -- 4) normalise A0A1A2B0B1B2 so that A0+A1+A2=B0+B1+B2
-local Version = '1.0  for Lua5'
-local VersionDate  = '12jul2017';
+local DF = require 'digitalfilter'
+local Version = DF.Version
+local VersionDate  = DF.VersionDate
 local Synopsis = [[
-program_name [options] [filenames]
+test_digitalfilter.lua [options]
 ]]
 local iarg=1; while arg[iarg] ~= nil do
 	if not string.find(arg[iarg], '^-[a-z]') then break end
@@ -32,8 +33,9 @@ local iarg=1; while arg[iarg] ~= nil do
 	iarg = iarg+1
 end
 -- local R  = require 'randomdist'
-local DF = require 'digitalfilter'
-require 'DataDumper'
+-- require 'DataDumper'
+
+local plotsize = '637,330'
 
 ----------------------------- infrastructure
 
@@ -242,7 +244,7 @@ function new_sinewave (frequency, samplerate)   -- RMS amplitude = 1.0
 end
 --------------------------------- check the gain at zero frequency
 -- local my_testsine = new_sinewave(,samplerate)
-for i,filtertype in ipairs({'butterworth','bessel'}) do
+for i,filtertype in ipairs({'butterworth','chebyschev','bessel'}) do
 	for order = 1,7 do
 		local my_filter = DF.new_digitalfilter ({
 			['type']        = filtertype,
@@ -250,6 +252,7 @@ for i,filtertype in ipairs({'butterworth','bessel'}) do
 			['order']       = order,
    			['freq']        = 1000,
   			['samplerate']  = 44100,
+  			['ripple']      = 3.0,
 --   			['debug']       = true,
 		})
 		local a = {}
@@ -264,29 +267,32 @@ for i,filtertype in ipairs({'butterworth','bessel'}) do
 	end
 end
 
---------------------------------- check the gain at zero frequency
--- local my_testsine = new_sinewave(,samplerate)
-local filtertype = 'chebyschev'
-for order = 1,7 do
+------------------------------------------------ try some benchmark
+local samplerate  = 44100
+local cutoff_freq = 1000
+local my_testsine = new_sinewave(cutoff_freq, samplerate)
+local a = {}
+local amps = {}
+for i = 1,2000 do a[#a+1] = my_testsine() end
+for order = 3,7 do
+	local my_sinewave  = new_sinewave(cutoff_freq, samplerate)
 	local my_filter = DF.new_digitalfilter ({
-		['type']        = filtertype,
+		['type']        = 'chebyschev',
 		['shape']       = 'lowpass',
 		['order']       = order,
-   		['freq']        = 1000,
-  		['samplerate']  = 44100,
---  		['debug']       = true,
+      		['freq']        = cutoff_freq,
+     		['samplerate']  = samplerate,
+     		['ripple']      = -3.0,
 	})
-	local a = {}
---	for i = 1,2000 do a[i] = my_filter(1.0) end
---print(DataDumper(a))
---	amp = rms(a)
---	ok(amp>0.98 and amp<1.02,
---  	filtertype..' order '..tostring(order)..
---	  ' lowpass gain at 0 Hz = '..tostring(amp))
---	if Failed >= 9 then die(' bailing out') end
+	local x = os.clock()
+	for i = 1,samplerate do local dump = my_filter(my_sinewave()) end
+	elapsed = os.clock() - x
+	ok(elapsed < 1.0, string.format(
+	  '%d-sample benchmark chebyschev order %d took %g sec',
+	  samplerate,order,elapsed))
 end
 
--- os.exit()
+os.exit()
 
 --------------------------------- plot some frequency responses ...
 local frequencies = {
@@ -299,8 +305,6 @@ local frequencies = {
 	 6400, 7368, 8064, 9056,10176,11392,
 	12800,14736,16128,18112,20352,
 }
-
--- os.exit()
 
 ------------------------------------------ bandpass
 local samplerate  = 44100
@@ -322,25 +326,23 @@ for ifreq,frequency in ipairs(frequencies) do
    		['samplerate']  = samplerate,
    		['Q']  = Q,
 	})
-	for i = 1,10000 do local dump = my_filter(my_sinewave()) end
+	for i = 1,2000 do local dump = my_filter(my_sinewave()) end
 	for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
 	amps[order] = rms(a)
 	if frequency == 1000 then
 		ok(eq(amps[order], 4.0, 0.01), 'bandpass '..tostring(order)..
 		  ' gain at 1000Hz was '..tostring(amps[order]))
 	end
-	plotfile:write(string.format("%d %g\n", frequency, amps[2]))
+	plotfile:write(string.format("%d %g\n", frequency, 10*math.log10(amps[2])))
 end
 plotfile:close()
 local gp = assert(io.open('/tmp/bandpass.gp', 'w'))
 gp:write([[
-set terminal jpeg enhanced size 950,505 font "sans, 16"
+set terminal jpeg enhanced size ]]..plotsize..[[ font "sans, 16"
 set colorsequence classic
 set output "/tmp/bandpass.jpg"
 set xlabel "Centre frequency ]]..tostring(centre_freq)..[["
 set ylabel "2nd-order bandpass Q=]]..tostring(Q)..[["
-set logscale y
-set yr [0.1:1.0]
 set logscale x
 set xr [100:10000]
 plot "/tmp/bandpass.plot" using 1:2 w l axes x1y2 smooth bezier
@@ -369,25 +371,23 @@ for ifreq,frequency in ipairs(frequencies) do
    		['samplerate']  = samplerate,
    		['Q']  = Q,
 	})
-	for i = 1,10000 do local dump = my_filter(my_sinewave()) end
+	for i = 1,2000 do local dump = my_filter(my_sinewave()) end
 	for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
 	amps[order] = rms(a)
 	if frequency == 1000 then
-		ok(eq(amps[order], 0.013557), 'bandstop '..tostring(order)..
+		ok(eq(amps[order], 0.013566, 0.0001), 'bandstop '..tostring(order)..
 		  ' gain at 1000Hz was '..tostring(amps[order]))
 	end
-	plotfile:write(string.format("%d %g\n", frequency, amps[2]))
+	plotfile:write(string.format("%d %g\n", frequency, 10*math.log10(amps[2])))
 end
 plotfile:close()
 local gp = assert(io.open('/tmp/bandstop.gp', 'w'))
 gp:write([[
-set terminal jpeg enhanced size 950,505 font "sans, 16"
+set terminal jpeg enhanced size ]]..plotsize..[[ font "sans, 16"
 set colorsequence classic
 set output "/tmp/bandstop.jpg"
 set xlabel "Centre frequency ]]..tostring(centre_freq)..[["
 set ylabel "2nd-order bandstop Q=]]..tostring(Q)..[["
-set logscale y
-set yr [0.1:1.0]
 set logscale x
 set xr [100:10000]
 plot "/tmp/bandstop.plot" using 1:2 w l axes x1y2 smooth bezier
@@ -416,7 +416,7 @@ for ifreq,frequency in ipairs(frequencies) do
        		['freq']        = cutoff_freq,
       		['samplerate']  = samplerate,
 		})
-		for i = 1,10000 do local dump = my_filter(my_sinewave()) end
+		for i = 1,2000 do local dump = my_filter(my_sinewave()) end
 		for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
 		amps[order] = rms(a)
 		if frequency == 1000 then
@@ -424,6 +424,7 @@ for ifreq,frequency in ipairs(frequencies) do
 			  ' gain at 1000Hz was '..tostring(amps[order]))
 		end
 	end
+	for i = 1,#amps do amps[i] = 10*math.log10(amps[i]) end
 	plotfile:write(string.format("%d %g %g %g %g %g %g %g\n",
 	  frequency, amps[1],amps[2],amps[3],amps[4],amps[5],amps[6],amps[7]
 	))
@@ -431,13 +432,11 @@ end
 plotfile:close()
 local gp = assert(io.open('/tmp/butterworth_lp.gp', 'w'))
 gp:write([[
-set terminal jpeg enhanced size 950,505 font "sans, 16"
+set terminal jpeg enhanced size ]]..plotsize..[[ font "sans, 16"
 set colorsequence classic
 set output "/tmp/butterworth_lp.jpg"
 set xlabel "Cutoff frequency ]]..tostring(cutoff_freq)..[["
 set ylabel "Butterworth  Lowpasses"
-set logscale y
-set yr [0.1:1.0]
 set logscale x
 set xr [100:10000]
 plot \
@@ -472,10 +471,11 @@ for ifreq,frequency in ipairs(frequencies) do
        		['freq']        = cutoff_freq,
       		['samplerate']  = samplerate,
 		})
-		for i = 1,10000 do local dump = my_filter(my_sinewave()) end
+		for i = 1,2000 do local dump = my_filter(my_sinewave()) end
 		for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
 		amps[order] = rms(a)
 	end
+	for i = 1,#amps do amps[i] = 10*math.log10(amps[i]) end
 	plotfile:write(string.format("%d %g %g %g %g %g %g %g\n",
 	  frequency, amps[1],amps[2],amps[3],amps[4],amps[5],amps[6],amps[7]
 	))
@@ -483,13 +483,11 @@ end
 plotfile:close()
 local gp = assert(io.open('/tmp/butterworth_hp.gp', 'w'))
 gp:write([[
-set terminal jpeg enhanced size 950,505 font "sans, 16"
+set terminal jpeg enhanced size ]]..plotsize..[[ font "sans, 16"
 set colorsequence classic
 set output "/tmp/butterworth_hp.jpg"
 set xlabel "Cutoff frequency ]]..tostring(cutoff_freq)..[["
 set ylabel "Butterworth  Highpasses"
-set logscale y
-set yr [0.1:1.0]
 set logscale x
 set xr [100:10000]
 plot \
@@ -505,6 +503,71 @@ gp:close()
 os.execute("gnuplot /tmp/butterworth_hp.gp")
 os.execute("display /tmp/butterworth_hp.jpg &")
 
+
+------------------------------------------ chebyschev_lp
+local passband_frequencies = {
+	   50,   56,   63,   71,   80,   89,
+	  100,  112,  126,  141,  159,  178,
+	  200,  212,  224,  237,  252,  267,  282,  299,  318,  337, 356, 378,
+	  400,  424,  448,  474,  504,  534,  566,  599,  636,  673, 712, 755, 777,
+	  800,  847,  890,  945, 1000, 1062, 1126, 1196, 1268, 1421,
+	 1510, 1600, 1693, 1792, 2016, 2264, 2544, 2848,
+	 3200, 3684, 4032, 4528, 5088, 5696,
+	 6400, 7368, 8064, 9056,10176,11392,
+	12800,14736,16128,18112,20352,
+}
+local samplerate  = 44100
+local cutoff_freq = 1000
+local my_testsine = new_sinewave(cutoff_freq,samplerate)
+local plotfile = assert(io.open('/tmp/chebyschev_lp.plot', 'w'))
+for ifreq,frequency in ipairs(passband_frequencies) do
+	if frequency > 1400 then break end
+	local a = {}
+	local amps = {}
+	for i = 1,2000 do a[#a+1] = my_testsine() end
+	for order = 3,7 do
+		local my_sinewave  = new_sinewave(frequency,samplerate)
+		local my_filter = DF.new_digitalfilter ({
+			['type']        = 'chebyschev',
+			['shape']       = 'lowpass',
+			['order']       = order,
+       		['freq']        = cutoff_freq,
+      		['samplerate']  = samplerate,
+      		['ripple']      = -3.0,
+		})
+		for i = 1,2000 do local dump = my_filter(my_sinewave()) end
+		for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
+		amps[order] = rms(a)
+		if frequency == 1000 then
+			ok(eq(amps[order],0.7071,0.007), 'chebyschev '..tostring(order)..
+			  ' gain at 1000Hz was '..tostring(amps[order]))
+		end
+	end
+	for i = 3,#amps do amps[i] = 10*math.log10(amps[i]) end
+	plotfile:write(string.format("%d %g %g %g %g %g\n",
+	  frequency, amps[3],amps[4],amps[5],amps[6],amps[7]
+	))
+end
+plotfile:close()
+local gp = assert(io.open('/tmp/chebyschev_lp.gp', 'w'))
+gp:write([[
+set terminal jpeg enhanced size ]]..plotsize..[[ font "sans, 16"
+set colorsequence classic
+set output "/tmp/chebyschev_lp.jpg"
+set xlabel "Cutoff frequency ]]..tostring(cutoff_freq)..[["
+set ylabel "Chebyschev -3dB ripple"
+set logscale x
+set xr [50:1600]
+plot \
+ "/tmp/chebyschev_lp.plot" using 1:2 w l axes x1y2 smooth bezier, \
+ "/tmp/chebyschev_lp.plot" using 1:3 w l axes x1y2 smooth bezier, \
+ "/tmp/chebyschev_lp.plot" using 1:4 w l axes x1y2 smooth bezier, \
+ "/tmp/chebyschev_lp.plot" using 1:5 w l axes x1y2 smooth bezier, \
+ "/tmp/chebyschev_lp.plot" using 1:6 w l axes x1y2 smooth bezier
+]])
+gp:close()
+os.execute("gnuplot /tmp/chebyschev_lp.gp")
+os.execute("display /tmp/chebyschev_lp.jpg &")
 
 -- os.exit()
 
@@ -527,7 +590,7 @@ for ifreq,frequency in ipairs(frequencies) do
       		['samplerate']  = samplerate,
 			-- ['debug']       = true
 		})
-		for i = 1,10000 do local dump = my_filter(my_sinewave()) end
+		for i = 1,2000 do local dump = my_filter(my_sinewave()) end
 		for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
 		amps[order] = rms(a)
 		if frequency == 1000 then
@@ -535,6 +598,7 @@ for ifreq,frequency in ipairs(frequencies) do
 			  ' gain at 1000Hz was '..tostring(amps[order]))
 		end
 	end
+	for i = 1,#amps do amps[i] = 10*math.log10(amps[i]) end
 	--plotfile:write(string.format("%d %g %g\n", frequency, amps[1], amps[2]))
 	plotfile:write(string.format("%d %g %g %g %g %g %g %g\n",
 	  frequency, amps[1],amps[2],amps[3],amps[4],amps[5],amps[6],amps[7] ))
@@ -542,13 +606,11 @@ end
 plotfile:close()
 local gp = assert(io.open('/tmp/bessel_lp.gp', 'w'))
 gp:write([[
-set terminal jpeg enhanced size 950,505 font "sans, 16"
+set terminal jpeg enhanced size ]]..plotsize..[[ font "sans, 16"
 set colorsequence classic
 set output "/tmp/bessel_lp.jpg"
 set xlabel "Cutoff frequency ]]..tostring(cutoff_freq)..[["
 set ylabel "Bessel  Lowpasses"
-set logscale y
-set yr [0.01:1.0]
 set logscale x
 set xr [100:10000]
 plot \
@@ -583,10 +645,11 @@ for ifreq,frequency in ipairs(frequencies) do
       		['samplerate']  = samplerate,
 			-- ['debug']       = true
 		})
-		for i = 1,10000 do local dump = my_filter(my_sinewave()) end
+		for i = 1,2000 do local dump = my_filter(my_sinewave()) end
 		for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
 		amps[order] = rms(a)
 	end
+	for i = 1,#amps do amps[i] = 10*math.log10(amps[i]) end
 	plotfile:write(string.format("%d %g %g %g %g %g %g %g\n",
 	  frequency, amps[1],amps[2],amps[3],amps[4],amps[5],amps[6],amps[7]
 	))
@@ -594,13 +657,11 @@ end
 plotfile:close()
 local gp = assert(io.open('/tmp/bessel_hp.gp', 'w'))
 gp:write([[
-set terminal jpeg enhanced size 950,505 font "sans, 16"
+set terminal jpeg enhanced size ]]..plotsize..[[ font "sans, 16"
 set colorsequence classic
 set output "/tmp/bessel_hp.jpg"
 set xlabel "Cutoff frequency ]]..tostring(cutoff_freq)..[["
 set ylabel "Bessel  Highpasses"
-set logscale y
-set yr [0.01:1.0]
 set logscale x
 set xr [100:10000]
 plot \
