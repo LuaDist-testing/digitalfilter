@@ -99,9 +99,9 @@ local function freq_pair_to_a012b12 (u,v)   -- frequency omega = u +-jv
 	--  = (u^2+v^2) * (1 - 2*u*s/(u^2+v^2) + s^2/(u^2+v^2))    since b0==1
 	-- simply to convert a pole pair to b012
 	if v == 0 then   -- single pole
-		return 1,0,0, -1*u, 0
+		return 1,0,0, -1*u, 0      -- XXX 20170720 ?
 	else   -- pole-pair
-		return 1,0,0, -2*u/(u*u+v*v), u*u+v*v
+		return 1,0,0, -2*u/(u*u+v*v), u*u+v*v  -- XXX is this backwards ?
 	end
 end
 
@@ -138,39 +138,50 @@ local freq_poles = {
 		[7] = {-1.0, 0 ;  -.9010, .4339 ;  -.6235, .7818 ;  -.2225, .9749},
 	-- for chebyschev as a function of ripple see Moschytz and Horn pp.138-140
 	},
-	['bessel'] = {
-		[1] = {-1.0, 0},
-		[2] = {-1.1016, 0.6364},
-		[3] = {-1.3226, 0 ;  -1.0474, 0.9992},
-		[4] = {-1.3700, 0.4102 ; -0.9952, 1.25718},
-		[5] = {-1.5023, 0 ;  -1.3808, 0.7179 ;  -0.9576, 1.4711},
-		[6] = {-1.5716, 0.3209 ;  -1.3819, 0.9715 ;  -0.9307, 1.6620},
-		[7] = {-1.6827, 0;  -1.6104, .5886;  -1.3775, 1.1904;  -.9089, 1.9749},
+	-- could calculate bessel poles, see Moschytz p.147, Daniels pp.249-289
+	-- www.analog.com/media/en/training-seminars/design-handbooks/
+	-- www.crbond.com/papers/bsf.pdf
+	-- https://en.wikipedia.org/wiki/Bessel_function
+	['bessel'] = {   -- https://en.wikipedia.org/wiki/Bessel_polynomials
+	--	[1] = {-1.0, 0},        -- where did I get these numbers from ?
+	--	[2] = {-1.1016, 0.6364},
+	--	[3] = {-1.3226, 0 ;  -1.0474, 0.9992},
+	--	[4] = {-1.3700, 0.4102 ; -0.9952, 1.25718},
+	--	[5] = {-1.5023, 0 ;  -1.3808, 0.7179 ;  -0.9576, 1.4711},
+	--	[6] = {-1.5716, 0.3209 ;  -1.3819, 0.9715 ;  -0.9307, 1.6620},
+	--	[7] = {-1.6827, 0;  -1.6104, .5886;  -1.3775, 1.1904;  -.9089, 1.9749},
+		[1] = {-1.0, 0},       -- see ~/html/filter/Chapter8.pdf  p.52
+		[2] = {-1.1050, 0.6368},
+		[3] = {-1.3270, 0 ;  -1.0509, 1.0025},
+		[4] = {-1.3596, 0.4071 ; -0.9877, 1.2476},
+		[5] = {-1.5069, 0 ;  -1.3851, 0.7201 ;  -0.9606, 1.4756},
+		[6] = {-1.5735, 0.3213 ;  -1.3836, 0.9727 ;  -0.9318, 1.6640},
+		[7] = {-1.6853, 0;  -1.6130, .5896;  -1.3797, 1.1923;  -.9104, 1.8375},
+		-- also up to order 10 ...
 	}
 }
 local function freq_pole_pair (filtertype, order, i)
-print('freq_pole_pair:',filtertype, order, i)
 	return freq_poles[filtertype][order][i+i-1],
 	       freq_poles[filtertype][order][i+i]
 	-- but see the bit in new_digitalfilter()
 end
 
-local function freq_a012b12_to_zm1_a012b012 (a0,a1,a2, b1,b2, option)   -- XXX
+local function freq_a012b12_to_zm1_A012B012 (a0,a1,a2, b1,b2, option)  -- XXX
 	-- a0a1a2b1b2 are for or a Frequency-Normalised Lowpass (so usually a0=1)
 	-- a H(s)-to-G(z) converter, a closure.  See pp.56,58,59
     -- it needs options shape,freq,samplerate
+	-- what is Constantinides p. 72 omega_c ?? beta ??
 	local freq       = option['freq']
 	local samplerate = option['samplerate']
 	local b0 = 1.0
 	local A0, A1, A2, B0, B1, B2
 	if option['shape'] == 'lowpass' then
-		if freq >= samplerate/2 then
-			return 1,0,0, 1,0,0
-		end
-		-- s == k*(1-zm1)/(1+zm1)  where k = Omega_c*cot(omega_c*T/2)
+		if freq >= samplerate/2 then return 1,0,0, 1,0,0 end  -- ???
+		-- s == k*(1-zm1)/(1+zm1)  where k = Omega_c*cot(omega_c*T/2)  REF??
 		local tmp = math.pi * freq / samplerate
 		local si = math.sin(tmp) ; local co = math.cos(tmp)
-		local k = co/si
+		local k = co/si -- Constantinides p. 56
+		-- Constantinides p. 72 omega_c ?? beta ??
 		-- (a0 + a1*s + a2*s^2) / (1 + b1*s + b2*s^2)
 		-- where s becomes k*(1-zm1)/(1+zm1)
 		-- multiplying numerator and denominator by (1+zm1)^2
@@ -189,12 +200,12 @@ local function freq_a012b12_to_zm1_a012b012 (a0,a1,a2, b1,b2, option)   -- XXX
 		-- s == k*(1+zm1)/(1-zm1)  where k = Omega_c*cot(omega_c*T/2)
 		local tmp = math.pi * freq / samplerate
 		local si = math.sin(tmp) ; local co = math.cos(tmp)
-		local k = si/co
+		local k = si/co  -- Constantinides p. 56
 		-- (a0 + a1*s + a2*s^2) / (1 + b1*s + b2*s^2)
-		-- where s becomes k*(1+zm1)/(1-zm1)
+		-- where s becomes k*(1+zm1)/(1-zm1) 
 		-- multiplying numerator and denominator by (1-zm1)^2
-		-- numerator   = a0*(1-2xm1+xm2) + a1*k*(1-xm2) + a2*k^2*(1+2xm1+xm2) 
-		-- denominator =   (1-2xm1+xm2)  + b1*k*(1-xm2) + b2*k^2*(1+2xm1+xm2) 
+		-- numerator   = a0*(1-2zm1+zm2) + a1*k*(1-zm2) + a2*k^2*(1+2zm1+zm2) 
+		-- denominator =   (1-2zm1+zm2)  + b1*k*(1-zm2) + b2*k^2*(1+2zm1+zm2) 
 		A0 = a0 + a1*k + a2*k*k
 		A1 = -2*a0 + 2*a2*k*k
 		A2 = a0 - a1*k +a2*k*k
@@ -202,7 +213,11 @@ local function freq_a012b12_to_zm1_a012b012 (a0,a1,a2, b1,b2, option)   -- XXX
 		B1 = -2*b0 + 2*b2*k*k
 		B2 = b0 - b1*k + b2*k*k
 	else return nil,
-		'freq_a012b12_to_zm1_a012b012: unknown shape '..option['shape']
+		'freq_a012b12_to_zm1_A012B012: unknown shape '..option['shape']
+	end
+	if option['debug'] then
+		print('freq_a012b12_to_zm1_A012B012: (A0+A1+A2)/(B0+B1+B2) =',
+	 	  (A0+A1+A2)/(B0+B1+B2) )
 	end
 	return A0, A1, A2, B0, B1, B2
 end
@@ -215,18 +230,32 @@ function M.new_filter_section (freq_pole_re, freq_pole_im, option)
 	-- see pp.58-59 ! the numerator of G(z) is not the same as of H(s) !
 	-- require 'cmath' ?  https://github.com/gregfjohnson/cmath
 	-- http://stevedonovan.github.io/Penlight/packages/lcomplex.html is 404 :-(
---print('new_filter_section: freq_pole_re =',freq_pole_re,'freq_pole_im =',freq_pole_im)
 	local a0,a1,a2,b1,b2 = freq_pair_to_a012b12(freq_pole_re, freq_pole_im)
---print(' a012 are:',a0,a1,a2,'\n b12 are:',b1,b2)
-	local A0,A1,A2,B0,B1,B2 = freq_a012b12_to_zm1_a012b012(
+	local A0,A1,A2,B0,B1,B2 = freq_a012b12_to_zm1_A012B012(
 	  a0,a1,a2,b1,b2,option)
---print(' A012 are:',A0,A1,A2,'\n B012 are:',B0,B1,B2)
+	if option['debug'] then
+		print('new_filter_section: freq_pole_re =',freq_pole_re,
+		  'freq_pole_im =',freq_pole_im)
+		warn(' a012b12:  ',a0,' ',a1,' ',a2,'  ',b1,' ',b2)
+		warn(' A012B012: ',A0,' ',A1,' ',A2,'  ',B0,' ',B1,' ',B2)
+		warn(' (A0+A1+A2-B1-B2)/B0 = ',(A0+A1+A2-B1-B2)/B0)
+	end
 	local u_km1 = 0.0
 	local u_km2 = 0.0
 	local v_km1 = 0.0
 	local v_km2 = 0.0
-	return function (u_k)   -- Eqn. [3.3]  p. 35
-		local v_k = (A0*u_k+A1*u_km1+A2*u_km2 - B1*v_km1-B2*v_km2)/(1+B0)
+	return function (u_k)   -- Eqn. [3.3]  Constantinides p. 35
+		-- according to Temes/Mitra p.512 and Daniels p.363,  B0=1 and A2=0
+		-- but that doesn't fit with Constantinides pp.54,56 :-(
+		-- local v_k = A0*u_k+A1*u_km1+A2*u_km2 - B1*v_km1-B2*v_km2   NO
+		-- local v_k = (A0*u_k+A1*u_km1+A2*u_km2)/(1 + B1*v_km1-B2*v_km2) NO
+		-- local v_k = (A0*u_k+A1*u_km1+A2*u_km2)/(B0 + B1*v_km1-B2*v_km2) NO
+		-- which doesn't fit with the renormalisation see RENORM above
+		-- Constantinides p.35 ; what happens to B0 ?
+		-- v_k = (A0*u_k+A1*u_km1+A2*u_km2) / (B0*v_k + B1*v_km1-B2*v_km2)
+		-- v_k*(1+B0) + B1*v_km1-B2*v_km2 = A0*u_k+A1*u_km1+A2*u_km2
+		--    v_k = (A0*u_k+A1*u_km1+A2*u_km2 - B1*v_km1-B2*v_km2)/(1+B0) NO
+		local v_k = (A0*u_k+A1*u_km1+A2*u_km2 - B1*v_km1-B2*v_km2)/B0  -- YES
 		u_km2 = u_km1 ; u_km1 = u_k
 		v_km2 = v_km1 ; v_km1 = v_k
 		return v_k
@@ -236,7 +265,7 @@ end
 ------------------------------ public ------------------------------
 
 function M.new_digitalfilter (option)
-print('new_digitalfilter =',dump(option))
+-- print('new_digitalfilter =',dump(option))
 	-- this is a closure, putting together a chain of filter_sections
 	if not option['type']  then option['type']  = 'butterworth' end
 	if type(option['type']) ~= 'string' then
@@ -294,18 +323,38 @@ return M
 
 =head1 NAME
 
-mymodule.lua - does whatever
+digitalfilter.lua - Butterworth, Chebyschev and Bessel digital filters: 
 
 =head1 SYNOPSIS
 
- local M = require 'mymodule'
- a = { 6,8,7,9,8 }
- b = { 4,7,5,4,5,6,4 }
- local probability_of_hypothesis_being_wrong = M.ttest(a,b,'b>a')
+ local DF = require 'digitalfilter'
+ local my_filter = DF.new_digitalfilter ({   --returns a closure
+    ['type']        = 'butterworth',
+    ['order']       = 3,
+    ['shape']       = 'lowpass',
+    ['freq']        = 1000,
+    ['samplerate']  = 441000,
+ })
+ for i = 1,95 do
+    local u = (math.floor((i%16)/8   + 0.01)*2 - 1)  -- square wave
+    local x = my_filter(u)
+    if i >= 80 then print('my_filter('..u..') \t=', x) end
+ end
 
 =head1 DESCRIPTION
 
-This module does whatever
+This module provides some Digital Filters - Butterworth, Chebyschev and Bessel
+
+To quote
+https://en.wikipedia.org/wiki/Digital_filter
+; I<The design of digital filters is a deceptively complex topic.[1] Although
+filters are easily understood and calculated, the practical challenges
+of their design and implementation are significant and are the subject
+of much advanced research.>
+
+In the literature I have, the notation is often confusing.
+For example, in Temes/Mitra p.152 the general zm1 transfer-function is
+given with parameters A_2 in the numerator equal to zero.
 
 =head1 FUNCTIONS
 
@@ -325,7 +374,7 @@ I<ttest> returns the probability of your hypothesis being wrong.
 =head1 DOWNLOAD
 
 This module is available at
-http://www.pjb.com.au/comp/lua/mymodule.html
+http://www.pjb.com.au/comp/lua/digitalfilter.html
 
 =head1 AUTHOR
 
@@ -333,6 +382,8 @@ Peter J Billam, http://www.pjb.com.au/comp/contact.html
 
 =head1 SEE ALSO
 
+ "Introduction to Digital Filtering", R.E.Bogner and A.G.Constantinides, Wiley 1975
+ https://en.wikipedia.org/wiki/Digital_filter
  http://www.pjb.com.au/
 
 
