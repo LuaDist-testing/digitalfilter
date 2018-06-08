@@ -8,8 +8,8 @@
 -- given in Rorabaugh's "Digital Filter Designer's Handbook", pp.287-291.
 
 local M = {} -- public interface
-M.Version = '1.4'
-M.VersionDate = '01aug2017'
+M.Version = '2.0'
+M.VersionDate = '02aug2017'
 
 ------------------------------ private ------------------------------
 local function warn(...)
@@ -130,24 +130,13 @@ function M.normalised_freq_poles(option)
 			end
 		end
 		if option['debug'] then
-			print('ripple =',ripple,'eta =',eta, 'gamma =',gamma)
+			print('order =',order,'ripple =',ripple,'eta =',eta,'gamma =',gamma)
 			print(table.unpack(poles))
 		end
 		return poles
-	end
-	local freq_poles = {
---		['butterworth'] = {
---			[1] = {-1.0, 0},
---			[2] = {-0.70710678, 0.70710678},
---			[3] = {-1.0, 0 ;  -0.5000, 0.8660},
---			[4] = {-0.92388, 0.38268 ; -0.38268, 0.92388},
---			[5] = {-1.0, 0 ;  -0.8090, 0.5878 ;  -0.3090, 0.9511},
---			[6] = {-0.9659,0.2588 ;  -0.70710678,0.70710678 ;  -0.2588,0.9659},
---			[7] = {-1.0, 0 ;  -.9010, .4339 ;  -.6235, .7818 ;  -.2225, .9749},
---		},
+	elseif option['type'] == 'bessel' then
 		-- www.analog.com/media/en/training-seminars/design-handbooks/
 		-- www.crbond.com/papers/bsf.pdf
-		-- https://en.wikipedia.org/wiki/Bessel_function
 		-- NOTA BENE:
 		-- https://en.wikipedia.org/wiki/Bessel_filter#Digital   says:
 		-- As the important characteristic of a Bessel filter is its
@@ -159,8 +148,7 @@ function M.normalised_freq_poles(option)
 		-- filter with maximally-flat group delay, which can be transformed
 		-- into an allpass filter to implement fractional delays
 		-- http://www-users.cs.york.ac.uk/~fisher/mkfilter/mzt.html
-
-		['bessel'] = {   -- https://en.wikipedia.org/wiki/Bessel_polynomials
+	 	-- https://en.wikipedia.org/wiki/Bessel_polynomials
 		--	[1] = {-1.0, 0},        -- see Moschytz p.130
 		--	[2] = {-1.1016, 0.6364},
 		--	[3] = {-1.3226, 0 ;  -1.0474, 0.9992},
@@ -168,18 +156,22 @@ function M.normalised_freq_poles(option)
 		--	[5] = {-1.5023, 0 ;  -1.3808, 0.7179 ;  -0.9576, 1.4711},
 		--	[6] = {-1.5716, 0.3209 ;  -1.3819, 0.9715 ;  -0.9307, 1.6620},
 		--	[7] = {-1.6827,0; -1.6104,0.5886; -1.3775,1.1904; -.9089,1.9749},
+		local bessel_poles = {
 			[1] = {-1.0, 0},       -- see ~/html/filter/Chapter8.pdf  p.52
 			[2] = {-1.1050, 0.6368},
 			[3] = {-1.3270, 0 ;  -1.0509, 1.0025},
-		--	[4] = {-1.3596, 0.4071 ; -0.9877, 1.2476},
+			--	[4] = {-1.3596, 0.4071 ; -0.9877, 1.2476},
 			[4] = {-1.3700, 0.4102 ; -0.9952, 1.25718},
 			[5] = {-1.5069, 0 ;  -1.3851, 0.7201 ;  -0.9606, 1.4756},
 			[6] = {-1.5735, 0.3213 ;  -1.3836, 0.9727 ;  -0.9318, 1.6640},
 			[7] = {-1.6853,0; -1.6130,.5896; -1.3797,1.1923; -.9104,1.8375},
 			-- also up to order 10 ...
-		},
-	}
-	return freq_poles[option['type']][option['order']]
+		}
+		return bessel_poles[option['order']]
+	else
+		return nil,
+		  'normalised_freq_poles: unknown type '..tostring(option['type'])
+	end
 end
 
 
@@ -303,16 +295,9 @@ function M.new_filter_section (A012B012, option)
 	local u_km2 = 0.0
 	local v_km1 = 0.0
 	local v_km2 = 0.0
-	return function (u_k)   -- Eqn. [3.3]  Constantinides p. 35
-		-- according to Temes/Mitra p.512 and Daniels p.363,  B0=1 and A2=0
-		-- but that doesn't fit with Constantinides pp.54,56 :-(
-		-- Constantinides p.35 ; what happens to B0 ?
-		-- v_k = (A0*u_k+A1*u_km1+A2*u_km2) / (B0*v_k + B1*v_km1-B2*v_km2)
-		-- v_k*(1+B0) + B1*v_km1-B2*v_km2 = A0*u_k+A1*u_km1+A2*u_km2
-		-- local v_k = (A0*u_k+A1*u_km1+A2*u_km2-B1*v_km1-B2*v_km2)/(1+B0) NO
-		-- local v_k = A0*u_k+A1*u_km1+A2*u_km2 - B1*v_km1-B2*v_km2 unstable
-		-- see Rorabaugh p.156 top eqn, with a and b swapped or p.130 eqn 7.6
-		local v_k = (A0*u_k+A1*u_km1+A2*u_km2 - B1*v_km1-B2*v_km2)/B0 -- YES
+	return function (u_k)   -- Constantinides eqn. [3.3] p.35
+		-- Rorabaugh p.156 top eqn, with a and b swapped or p.130 eqn 7.6
+		local v_k = (A0*u_k+A1*u_km1+A2*u_km2 - B1*v_km1-B2*v_km2)/B0
 		u_km2 = u_km1 ; u_km1 = u_k
 		v_km2 = v_km1 ; v_km1 = v_k
 		return v_k
@@ -344,11 +329,24 @@ function M.new_digitalfilter (option)
 		local A012B012=freq_a012b012_to_zm1_A012B012(a012b012,option)
 		section_funcs[i] = M.new_filter_section(A012B012, option)
 	end
-	return function (signal)   -- executes the chain of filter_sections
-		for i, section in ipairs(section_funcs) do
-			signal = section_funcs[i](signal)
+	if option['type'] == 'chebyschev' and 0 == option['order']%2 then
+		-- 2.0 chebyschev of even order starts one ripple BENEATH unity gain!
+		local ripple = option['ripple'] or 1
+		local inital_gain = 1 / 10 ^ (0.05*ripple)
+--print('order=',option['order'],'ripple=',ripple,'inital_gain=',inital_gain)
+		return function (signal)   -- executes the chain of filter_sections
+			for i, section in ipairs(section_funcs) do
+				signal = section_funcs[i](signal)
+			end
+			return inital_gain * signal
 		end
-		return signal
+	else
+		return function (signal)   -- executes the chain of filter_sections
+			for i, section in ipairs(section_funcs) do
+				signal = section_funcs[i](signal)
+			end
+			return signal
+		end
 	end
 end
 
@@ -542,7 +540,7 @@ so you should be able to install it with the command:
 
 or:
 
- # luarocks install http://www.pjb.com.au/comp/lua/digitalfilter-1.4-0.rockspec
+ # luarocks install http://www.pjb.com.au/comp/lua/digitalfilter-2.0-0.rockspec
 
 The test script used during development is
 www.pjb.com.au/comp/lua/test_digitalfilteR.lua
@@ -553,6 +551,7 @@ Peter J Billam, http://www.pjb.com.au/comp/contact.html
 
 =head1 CHANGES
 
+ 20170802 2.0 chebyschev even orders start at the bottom of their ripple
  20170731 1.4 chebyschev filters added, but even orders not the right shape
  20170730 1.3 finally fix the bessel freq-resp bug
  20170729 1.2 the same bad bessel freq-resp, using Rorabaugh's book

@@ -253,14 +253,16 @@ for i,filtertype in ipairs({'butterworth','chebyschev','bessel'}) do
    			['freq']        = 1000,
   			['samplerate']  = 44100,
   			['ripple']      = 3.0,
---   			['debug']       = true,
 		})
 		local a = {}
 		for i = 1,10000 do local dump = my_filter(1.0) end
 		for i = 1,2000 do a[i] = my_filter(1.0) end
---print(DataDumper(a))
 		amp = rms(a)
-		ok(amp>0.98 and amp<1.02,
+		local should_be = 1.0
+		if filtertype == 'chebyschev' and 0 == order%2 then
+			should_be = math.sqrt(0.5)
+		end
+		ok(eq(amp,should_be,0.03),
 	  	filtertype..' order '..tostring(order)..
 		  ' lowpass gain at 0 Hz = '..tostring(amp))
 		if Failed >= 9 then die(' bailing out') end
@@ -282,7 +284,7 @@ for order = 3,7 do
 		['order']       = order,
       		['freq']        = cutoff_freq,
      		['samplerate']  = samplerate,
-     		['ripple']      = -3.0,
+     		['ripple']      = 1.0,
 	})
 	local x = os.clock()
 	for i = 1,samplerate do local dump = my_filter(my_sinewave()) end
@@ -292,7 +294,7 @@ for order = 3,7 do
 	  samplerate,order,elapsed))
 end
 
-os.exit()
+--os.exit()
 
 --------------------------------- plot some frequency responses ...
 local frequencies = {
@@ -506,6 +508,8 @@ os.execute("display /tmp/butterworth_hp.jpg &")
 
 ------------------------------------------ chebyschev_lp
 local passband_frequencies = {
+	   10,   13,   15,   17,   20,
+	   25,   28,   31,   35,   40,   44,
 	   50,   56,   63,   71,   80,   89,
 	  100,  112,  126,  141,  159,  178,
 	  200,  212,  224,  237,  252,  267,  282,  299,  318,  337, 356, 378,
@@ -533,7 +537,7 @@ for ifreq,frequency in ipairs(passband_frequencies) do
 			['order']       = order,
        		['freq']        = cutoff_freq,
       		['samplerate']  = samplerate,
-      		['ripple']      = -3.0,
+      		['ripple']      = 3.0,
 		})
 		for i = 1,2000 do local dump = my_filter(my_sinewave()) end
 		for i = 1,2000 do a[i] = my_filter(my_sinewave()) end
@@ -557,7 +561,7 @@ set output "/tmp/chebyschev_lp.jpg"
 set xlabel "Cutoff frequency ]]..tostring(cutoff_freq)..[["
 set ylabel "Chebyschev -3dB ripple"
 set logscale x
-set xr [50:1600]
+set xr [10:1600]
 plot \
  "/tmp/chebyschev_lp.plot" using 1:2 w l axes x1y2 smooth bezier, \
  "/tmp/chebyschev_lp.plot" using 1:3 w l axes x1y2 smooth bezier, \
