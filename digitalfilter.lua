@@ -99,64 +99,91 @@ local function freq_pair_to_a012b12 (u,v)   -- frequency omega = u +-jv
 	end
 end
 
-local freq_poles = {
--- SHOULD BE noralised_freq_poles(option)
--- SHOULD normalise frequency so -3dB at unity freq
--- Calculate Butterworth:  Daniels [2.25] p.16, Rorabaugh p.65 [3.2]
--- Calculate Bessel: Moschytz p.147, Daniels pp.249-289 Rorabaugh p.110,113
--- Chebyschev as function of ripple: Moschytz pp.138-140 Rorabaugh p.80
--- SEE Rorabaugh p.50 and for Laguerre's method to factorise Bessels pp.62-3
+function M.normalised_freq_poles(option)
+	-- SHOULD normalise frequency so -3dB at unity freq
+	-- Calculate Butterworth:  Daniels p.16 [2.25], Rorabaugh p.65 [3.2]
+	-- Calculate Bessel: Moschytz p.147, Daniels pp.249-289 Rorabaugh p.110,113
+	-- Chebyschev as function of ripple: Moschytz pp.138-140 Rorabaugh p.80
+	-- SEE Rorabaugh p.50 and for Laguerre's method to factorise Bessels pp.62-3
 
 	-- u,v,u,v,u,v,...  non-zero imaginary part v means a pole-pair u +-jv
 	-- Active Filter Design Handbook, Moschytz and Horn, 1981, Wiley, p.130
 	-- Modern Low-Pass Filter Characteristics, Eggen and McAllister,
 	--    Electro-Technology, August 1966
-	['butterworth'] = {
-		[1] = {-1.0, 0},
-		[2] = {-0.70710678, 0.70710678},
-		[3] = {-1.0, 0 ;  -0.5000, 0.8660},
-		[4] = {-0.92388, 0.38268 ; -0.38268, 0.92388},
-		[5] = {-1.0, 0 ;  -0.8090, 0.5878 ;  -0.3090, 0.9511},
-		[6] = {-0.9659, 0.2588 ;  -0.70710678, 0.70710678 ;  -0.2588, 0.9659},
-		[7] = {-1.0, 0 ;  -.9010, .4339 ;  -.6235, .7818 ;  -.2225, .9749},
-	},
-	-- www.analog.com/media/en/training-seminars/design-handbooks/
-	-- www.crbond.com/papers/bsf.pdf
-	-- https://en.wikipedia.org/wiki/Bessel_function
-	['bessel'] = {   -- https://en.wikipedia.org/wiki/Bessel_polynomials
-	--	[1] = {-1.0, 0},        -- see Moschytz p.130
-	--	[2] = {-1.1016, 0.6364},
-	--	[3] = {-1.3226, 0 ;  -1.0474, 0.9992},
-	--	[4] = {-1.3700, 0.4102 ; -0.9952, 1.25718},
-	--	[5] = {-1.5023, 0 ;  -1.3808, 0.7179 ;  -0.9576, 1.4711},
-	--	[6] = {-1.5716, 0.3209 ;  -1.3819, 0.9715 ;  -0.9307, 1.6620},
-	--	[7] = {-1.6827, 0;  -1.6104, .5886;  -1.3775, 1.1904;  -.9089, 1.9749},
-		[1] = {-1.0, 0},       -- see ~/html/filter/Chapter8.pdf  p.52
-	--	[2] = {-1.1050, 0.6368},
-		[2] = {-0.9318, 1.6640},
-		[3] = {-1.3270, 0 ;  -1.0509, 1.0025},
-		[4] = {-1.3596, 0.4071 ; -0.9877, 1.2476},
-		[5] = {-1.5069, 0 ;  -1.3851, 0.7201 ;  -0.9606, 1.4756},
-		[6] = {-1.5735, 0.3213 ;  -1.3836, 0.9727 ;  -0.9318, 1.6640},
-		[7] = {-1.6853, 0;  -1.6130, .5896;  -1.3797, 1.1923;  -.9104, 1.8375},
-		-- also up to order 10 ...
+	if option['type'] == 'butterworth' then
+		-- Rorabaugh p.65 [3.2]
+		-- for i=1..n,  cos(pi*(2i+n-1)/(2n)) +- sin(pi*(2i+n-1)/(2n))
+		local poles = {}
+		local pi = math.pi
+		local order = option['order']
+		local n_sections = math.floor((order+1.001) / 2)
+		for i = n_sections,1,-1 do
+			local angle = pi*(2*i+order-1)/(2*order)
+			table.insert(poles, math.cos(angle))
+			if i == n_sections and order%2 == 1 then table.insert(poles, 0)
+			else table.insert(poles, math.sin(angle))
+			end
+		end
+		if option['debug'] then
+			print('normalised_freq_poles: order =',option['order'],
+			  ' n_sections =',n_sections)
+			print(DataDumper(poles))
+		end
+		return poles
+	elseif string.match(option['type'], '^t?chebyschev') then
+		-- chebyschev: Rorabaugh p.79
+		local poles = {}
+		local pi = math.pi
+		local order = option['order']
+		local n_sections = math.floor((order+1.001) / 2)
+		local ripple = option['ripple'] or 1
+		local eta = math.sqrt(10^(ripple/10) - 1)   -- [4.8]
+		local gamma = ((1 + math.sqrt(1 + eta*eta))/eta)^(1/order)  -- [4.7]
+		for i = n_sections,1,-1 do
+			local angle = pi*(2*i - 1)/(2*order)
+			table.insert(poles, 0.5*(1/gamma - gamma)*math.sin(angle))
+			if i == n_sections and order%2 == 1 then table.insert(poles, 0)
+			else table.insert(poles, 0.5*(1/gamma + gamma)*math.cos(angle))
+			end
+		end
+		if option['debug'] then
+			print('ripple =',ripple,'eta =',eta, 'gamma =',gamma)
+		end
+		return poles
+	end
+	local freq_poles = {
+--		['butterworth'] = {
+--			[1] = {-1.0, 0},
+--			[2] = {-0.70710678, 0.70710678},
+--			[3] = {-1.0, 0 ;  -0.5000, 0.8660},
+--			[4] = {-0.92388, 0.38268 ; -0.38268, 0.92388},
+--			[5] = {-1.0, 0 ;  -0.8090, 0.5878 ;  -0.3090, 0.9511},
+--			[6] = {-0.9659,0.2588 ;  -0.70710678,0.70710678 ;  -0.2588,0.9659},
+--			[7] = {-1.0, 0 ;  -.9010, .4339 ;  -.6235, .7818 ;  -.2225, .9749},
+--		},
+		-- www.analog.com/media/en/training-seminars/design-handbooks/
+		-- www.crbond.com/papers/bsf.pdf
+		-- https://en.wikipedia.org/wiki/Bessel_function
+		['bessel'] = {   -- https://en.wikipedia.org/wiki/Bessel_polynomials
+		--	[1] = {-1.0, 0},        -- see Moschytz p.130
+		--	[2] = {-1.1016, 0.6364},
+		--	[3] = {-1.3226, 0 ;  -1.0474, 0.9992},
+		--	[4] = {-1.3700, 0.4102 ; -0.9952, 1.25718},
+		--	[5] = {-1.5023, 0 ;  -1.3808, 0.7179 ;  -0.9576, 1.4711},
+		--	[6] = {-1.5716, 0.3209 ;  -1.3819, 0.9715 ;  -0.9307, 1.6620},
+		--	[7] = {-1.6827,0; -1.6104,0.5886; -1.3775,1.1904; -.9089,1.9749},
+			[1] = {-1.0, 0},       -- see ~/html/filter/Chapter8.pdf  p.52
+			[2] = {-1.1050, 0.6368},
+			[3] = {-1.3270, 0 ;  -1.0509, 1.0025},
+		--	[4] = {-1.3596, 0.4071 ; -0.9877, 1.2476},
+			[4] = {-1.3700, 0.4102 ; -0.9952, 1.25718},
+			[5] = {-1.5069, 0 ;  -1.3851, 0.7201 ;  -0.9606, 1.4756},
+			[6] = {-1.5735, 0.3213 ;  -1.3836, 0.9727 ;  -0.9318, 1.6640},
+			[7] = {-1.6853,0; -1.6130,.5896; -1.3797,1.1923; -.9104,1.8375},
+			-- also up to order 10 ...
+		},
 	}
-}
-function M.freq_pole_pair (filtertype, order, i)
-	return freq_poles[filtertype][order][i+i-1],
-	       freq_poles[filtertype][order][i+i]
-	-- This bit should go into M.freq_pole_pair()  XXX
-	-- if string.find(option['type'], 't?chebyschev$') then
-	-- 	if option['ripple'] then option['ripple'] = 1.0 end -- ripple
-	-- 	if type(option['ripple']) ~= 'number' then
-	-- 		return nil,"new_digitalfilter: option['ripple'] must be a number"
-	-- 	end
-	-- local denominator_poles   -- {u,v,u,v,u,v,u,v ...}
-	-- 	denominator_poles = M.freq_pole_pair('butterworth',option['order'])
-		-- now adjust the real part
-		-- see Moschytz pp.138-140, also Daniels pp.36-40, Temes pp.41-45
-		-- XXX
-	-- else
+	return freq_poles[option['type']][option['order']]
 end
 
 function M.pole_pair_to_freq_Q (u,v)   -- poles at (u+jv)*(u-jv) = u^2+v^2
@@ -178,12 +205,12 @@ function M.freq_sections (option)
 --   1) get normalised pole and zero pairs of butterworth, chebyschev ... etc
 --   2) transform to lowpass, highpass, bandpass, bandstop  Daniels p.86
 --   3) from the normalised section to the frequency-scaled section
-	if not freq_poles[option['type']] then
-		return nil, 'freq_sections: unknown type '..option['type']
-	end
-	if not freq_poles[option['type']][option['order']] then
-		return nil, 'freq_sections: unimplemented order '..option['order']
-	end
+--	if not freq_poles[option['type']] then
+--		return nil, 'freq_sections: unknown type '..option['type']
+--	end
+--	if not freq_poles[option['type']][option['order']] then
+--		return nil, 'freq_sections: unimplemented order '..option['order']
+--	end
 	if option['freq'] >= option['samplerate']/2 then
 		if  option['shape']=='lowpass' or option['shape']=='bandpass' then
 			return { {0, 0, 0,  1, 0, 0} }
@@ -191,11 +218,14 @@ function M.freq_sections (option)
 			return { {1, 0, 0,  1, 0, 0} }
 		end
 	end
-	local normalised_poles = freq_poles[option['type']][option['order']]
+	local normalised_poles = M.normalised_freq_poles(option)
 	local sections = {}
 	for i = 1, #normalised_poles, 2 do
 		local re = normalised_poles[i]
 		local im = normalised_poles[i+1]
+		-- EACH SECTION must be normalised to RC==1
+		local poles_freq = math.sqrt(re*re + im*im)
+		re = re / poles_freq ; im = im / poles_freq
 		local a0,a1,a2, b0,b1,b2
 		if im == 0 then   -- a single-pole section
 			if option['shape'] == 'bandpass' then
@@ -213,18 +243,17 @@ function M.freq_sections (option)
 				a0=1; a1=0; a2=0; b0=1; b1=-2*re/(re*re+im*im); b2=re*re+im*im
 			end
 		end
-		-- transform to the desired shape and unnormalise, Daniels pp.86-89
-		local omega = 2 * math.pi * option['freq']
 		if option['shape'] == 'highpass' then
 			local tmp
-			tmp = a2; a2 = a0; a0 = tmp
+			tmp = a2; a2 = a0; a0 = tmp -- transform to the desired shape
 			tmp = b2; b2 = b0; b0 = tmp
+			poles_freq = 1 / poles_freq
 		end
-		-- 20170727 denormalise AFTER highpass-exchanging a0,a2 and b0,b2
+		-- EACH SECTION must be normalised to RC==1
+		local omega = 2 * math.pi * option['freq'] * poles_freq
 		a1 = a1 / omega;  a2 = a2 / (omega*omega)
 		b1 = b1 / omega;  b2 = b2 / (omega*omega)
 		table.insert(sections, {a0,a1,a2, b0,b1,b2})
--- print(M.b0b1b2_to_freq_Q (b0,b1,b2))
 	end
 	return sections
 end
@@ -251,9 +280,10 @@ local function freq_a012b012_to_zm1_A012B012 (a012b012, option)
 	--> B0 = b0 + b1*(2/T) + b2*(2/T)^2
 	--> B1 = 2*b0 - 2*b2*(2/T)^2
 	--> B2 = b0 - b1*(2/T) + b2*(2/T)^2
-	--> 2/T = 2*samplerate    (? or pi* ? )
+	--> 2/T = 2*samplerate
 	local a0,a1,a2, b0,b1,b2 = table.unpack(a012b012)
 	local two_over_T = 2*option['samplerate']
+-- XXX only here does T interact with the section-frequency
 	local two_over_T_squared = two_over_T^2
 	local A0 = a0 + a1*two_over_T + a2*two_over_T_squared
 	local A1 = 2*a0 - 2*a2*two_over_T_squared
@@ -263,76 +293,6 @@ local function freq_a012b012_to_zm1_A012B012 (a012b012, option)
 	local B2 = b0 - b1*two_over_T + b2*two_over_T_squared
 	return {A0,A1,A2, B0,B1,B2}
 end
-
---[==[
-local function freq_a012b012_to_zm1_A012B012 (a0,a1,a2, b0,b1,b2, option)
-	-- see Rorabaugh pp.287-289 (or pp.289-291)
-	-- but it's easier if I work directly from the poles and zeros !
-	-- local freq       = option['freq']
-	-- local samplerate = option['samplerate']
-	local A0, A1, A2, B0, B1, B2
-	-- 1) Find the new poles: z_{pn} = (2 + p_n*T)/(2 - p_n*T)
-	-- 2) Find the new zeros: z_{zn} = (2 - q_n*T)/(2 + q_n*T)
-	-- 3) H(z) = H_0 * 
-	if option['shape'] == 'lowpass' then
-		if freq >= samplerate/2 then return 1,0,0, 1,0,0 end
-		-- s == k*(1-zm1)/(1+zm1)  where k = Omega_c*cot(omega_c*T/2)  p.56
-		-- Rorabaugh calls this "Bilinear Transfromation" but swaps a and b
-		-- see Constantinides p.56; or k = 2/T Rorabaugh p.287
-		local tmp = math.pi * freq / samplerate
-		local si = math.sin(tmp) ; local co = math.cos(tmp)
-		local k = co/si -- Constantinides p. 56
-		-- Constantinides p. 72 omega_c ?? beta ??
-		-- (a0 + a1*s + a2*s^2) / (1 + b1*s + b2*s^2)
-		-- where s becomes k*(1-zm1)/(1+zm1)
-		-- multiplying numerator and denominator by (1+zm1)^2
-		-- numerator   = a0*(1+2zm1+zm2) + a1*k*(1-zm2) + a2*k*k*(1-2zm1+zm2) 
-		-- denominator = b0*(1+2zm1+zm2) + b1*k*(1-zm2) + b2*k*k*(1-2zm1+zm2) 
-		A0 = a0 + a1*k + a2*k*k
-		A1 = 2*a0 - 2*a2*k*k
-		A2 = a0 - a1*k +a2*k*k
-		B0 = b0 + b1*k + b2*k*k
-		B1 = 2*b0 - 2*b2*k*k
-		B2 = b0 - b1*k + b2*k*k
-	elseif option['shape'] == 'highpass' then
-		if freq >= samplerate/2 then return 1,0,0, 1,0,0 end
-		-- s == k*(1+zm1)/(1-zm1)  where k = Omega_c*cot(omega_c*T/2)
-		local tmp = math.pi * freq / samplerate
-		local si = math.sin(tmp) ; local co = math.cos(tmp)
-		local k = si/co  -- Constantinides p. 56
-		-- (a0 + a1*s + a2*s^2) / (1 + b1*s + b2*s^2)
-		-- where s becomes k*(1+zm1)/(1-zm1) 
-		-- multiplying numerator and denominator by (1-zm1)^2
-		-- numerator   = a0*(1-2zm1+zm2) + a1*k*(1-zm2) + a2*k^2*(1+2zm1+zm2) 
-		-- denominator =   (1-2zm1+zm2)  + b1*k*(1-zm2) + b2*k^2*(1+2zm1+zm2) 
-		A0 = a0 + a1*k + a2*k*k
-		A1 = -2*a0 + 2*a2*k*k
-		A2 = a0 - a1*k +a2*k*k
-		B0 = 1  + b1*k + b2*k*k
-		B1 = -2*b0 + 2*b2*k*k
-		B2 = b0 - b1*k + b2*k*k
-	else return nil,
-		'freq_a012b12_to_zm1_A012B012: unknown shape '..option['shape']
-	end
-	local RENORM = (A0+A1+A2-B1-B2)/B0
-	if option['debug'] then
-		print('freq_a012b12_to_zm1_A012B012: (A0+A1+A2-B1-B2)/B02) =', RENORM)
-		if RENORM == 0 then
-			print(option['type'], option['shape'], option['order'])
-			print('a012 =',a0,a1,a2,' b012 =',b0,b1,b2)
-			print('A012 =',A0,A1,A2,' B012 =',B0,B1,B2)
-			os.exit()
-		end
-	 	--  (A0+A1+A2)/(B0+B1+B2) )
-	end
-	-- BUT Constantinides p.36 says: G(z) = V(z)/U(z)
-	-- where V(z) is the z-transform of the OUTPUT signal
-	--  and  U(z) is the z-transform of the INPUT  signal :-( !?!
-	-- return A0, A1, A2, B0*RENORM, B1, B2
-	-- return A0, A1, A2, B0,        B1, B2
-	return A0/B0, A1/B0, A2/B0, 1, B1/B0, B2/B0
-end
-]==]
 
 function M.new_filter_section (A012B012, option)
 	-- We have a naming conflict here, with u,v being used
@@ -396,13 +356,8 @@ function M.new_digitalfilter (option)
 		section_funcs[i] = M.new_filter_section(A012B012, option)
 	end
 	return function (signal)   -- executes the chain of filter_sections
-		--local old_signal = signal
 		for i, section in ipairs(section_funcs) do
-			-- print('signal =',signal)
 			signal = section_funcs[i](signal)
-		--if math.abs(signal) > math.abs(old_signal) then NO
-		--	print(option['type'],option['order'],' section number',i)
-		--end
 		end
 		return signal
 	end
