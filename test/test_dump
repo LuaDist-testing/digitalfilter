@@ -1,0 +1,127 @@
+#! /usr/bin/lua
+require 'DataDumper'
+
+--------------------------- infrastructure -----------------------
+local Test = 73 ; local i_test = 0; local Failed = 0;
+function ok(b,s)
+    i_test = i_test + 1
+    if b then
+        io.write('ok '..i_test..' - '..s.."\n")
+		return true
+    else
+        io.write('not ok '..i_test..' - '..s.."\n")
+        Failed = Failed + 1
+		return false
+    end
+end
+
+-- strict.lua    checks uses of undeclared global variables
+-- All global variables must be 'declared' through a regular assignment
+-- (even assigning nil will do) in a main chunk before being used
+-- anywhere or assigned to inside a function.
+local mt = getmetatable(_G)
+if mt == nil then
+  mt = {}
+  setmetatable(_G, mt)
+end
+mt.__declared = {}
+mt.__newindex = function (t, n, v)
+  if not mt.__declared[n] then
+    local w = debug.getinfo(2, "S").what
+    if w ~= "main" and w ~= "C" then
+      error("assign to undeclared variable '"..n.."'", 2)
+    end
+    mt.__declared[n] = true
+  end
+  rawset(t, n, v)
+end
+mt.__index = function (t, n)
+  if not mt.__declared[n] and debug.getinfo(2, "S").what ~= "C" then
+    error("variable '"..n.."' is not declared", 2)
+  end
+  return rawget(t, n)
+end
+
+
+----------------------------- tests -------------------------
+local n = nil
+local n_dump = DataDumper(n)
+if not ok(n_dump == 'return nil', 'nil') then
+	print('n_dump = '..tostring(n_dump))
+end
+
+n_dump = DataDumper(n, 'varname')
+if not ok(n_dump == 'varname = nil', 'nil with varname') then
+	print('n_dump = '..tostring(n_dump))
+end
+
+-- fastmode has no perceptible effect; maybe it's just working very well :-)
+--n_dump = DataDumper(n, 'vn', true)
+--if not ok(n_dump == 'vn = nil', 'fastmode') then
+--	print('n_dump = '..tostring(n_dump))
+--end
+
+-- indentlevel seems to have no effect
+--n_dump = DataDumper(n, 'vn', false, 3)
+--if not ok(n_dump == 'vn = nil', 'indentlevel') then
+--	print('n_dump = '..tostring(n_dump))
+--end
+
+local b = false
+local b_dump = DataDumper(b)
+if not ok(b_dump == 'return false', 'false') then
+	print('b_dump = '..tostring(b_dump))
+end
+
+b = true
+b_dump = DataDumper(b)
+if not ok(b_dump == 'return true', 'true') then
+	print('b_dump = '..tostring(b_dump))
+end
+
+local s = 'gloop'
+local s_dump = DataDumper(s)
+if not ok(s_dump == 'return "gloop"', 'string') then
+	print('s_dump = '..tostring(s_dump))
+end
+
+n = -4.72
+n_dump = DataDumper(n)
+if not ok(n_dump == 'return -4.72', 'number') then
+	print('n_dump = '..tostring(n_dump))
+end
+
+local a = {'gloop', -4.72, nil }
+local a_dump = DataDumper(a)
+if not ok(a_dump == 'return { "gloop", -4.72 }', 'array') then
+	print('a_dump = '..tostring(a_dump))
+end
+
+local t = { Fred='23', Gina='21' }
+local t_dump = DataDumper(t)
+if not ok(t_dump == 'return { Fred="23", Gina="21" }', 'table') then
+	print('t_dump = '..tostring(t_dump))
+end
+
+-- DataDumper uses loadstring(), but 5.2 has load() instead ...
+-- though loadstring survives as a synonym.
+X = 3  -- global
+local f = function() X = 4 end
+local f_dump = DataDumper(f, 'varn', true, 3)
+pcall(loadstring(f_dump))
+varn()
+if not ok(X == 4, 'function with fastmode') then
+	print('X = '..tostring(X))
+end
+
+if _VERSION == 'Lua 5.92' then
+	print('skipping test of function without fastmode, which fails on lua 5.2')
+else
+	X = 3
+	f_dump = DataDumper(f, 'varn', false, 3)
+	pcall(loadstring(f_dump))
+	varn()
+	if not ok(X == 4, 'function without fastmode') then
+		print('X = '..tostring(X))
+	end
+end
