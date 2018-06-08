@@ -94,7 +94,7 @@ function M.normalised_freq_poles(option)
 	-- Active Filter Design Handbook, Moschytz and Horn, 1981, Wiley, p.130
 	-- Modern Low-Pass Filter Characteristics, Eggen and McAllister,
 	--    Electro-Technology, August 1966
-	if option['type'] == 'butterworth' then -- Rorabaugh p.65 [3.2]
+	if option['filtertype'] == 'butterworth' then -- Rorabaugh p.65 [3.2]
 		-- for i=1..n,  cos(pi*(2i+n-1)/(2n)) +- sin(pi*(2i+n-1)/(2n))
 		local poles = {}
 		local pi = math.pi
@@ -113,7 +113,7 @@ function M.normalised_freq_poles(option)
 			print(DataDumper(poles))
 		end
 		return poles
-	elseif string.match(option['type'], '^t?chebyschev') then -- Rorabaugh p.79
+	elseif string.match(option['filtertype'], '^t?chebyschev') then -- Rorabaugh p.79
 		local poles = {}
 		local pi = math.pi
 		local order = option['order']
@@ -134,7 +134,7 @@ function M.normalised_freq_poles(option)
 			print(table.unpack(poles))
 		end
 		return poles
-	elseif option['type'] == 'bessel' then
+	elseif option['filtertype'] == 'bessel' then
 		-- www.analog.com/media/en/training-seminars/design-handbooks/
 		-- www.crbond.com/papers/bsf.pdf
 		-- NOTA BENE:
@@ -170,7 +170,7 @@ function M.normalised_freq_poles(option)
 		return bessel_poles[option['order']]
 	else
 		return nil,
-		  'normalised_freq_poles: unknown type '..tostring(option['type'])
+		  'normalised_freq_poles: unknown type '..tostring(option['filtertype'])
 	end
 end
 
@@ -186,10 +186,10 @@ function M.freq_sections (option)
 --   1) get normalised pole and zero pairs of butterworth, chebyschev ... etc
 --   2) transform to lowpass, highpass, bandpass, bandstop  Daniels p.86
 --   3) from the normalised section to the frequency-scaled section
---	if not freq_poles[option['type']] then
---		return nil, 'freq_sections: unknown type '..option['type']
+--	if not freq_poles[option['filtertype']] then
+--		return nil, 'freq_sections: unknown type '..option['filtertype']
 --	end
---	if not freq_poles[option['type']][option['order']] then
+--	if not freq_poles[option['filtertype']][option['order']] then
 --		return nil, 'freq_sections: unimplemented order '..option['order']
 --	end
 	if option['freq'] >= option['samplerate']/2 then
@@ -309,9 +309,9 @@ end
 function M.new_digitalfilter (option)
 -- print('new_digitalfilter =',dump(option))
 	-- this is a closure, putting together a chain of filter_sections
-	if not option['type']  then option['type']  = 'butterworth' end
-	if type(option['type']) ~= 'string' then
-		return nil, "new_digitalfilter: option['type'] must be a string"
+	if not option['filtertype']  then option['filtertype']  = 'butterworth' end
+	if type(option['filtertype']) ~= 'string' then
+		return nil, "new_digitalfilter: option['filtertype'] must be a string"
 	end
 	if not option['order'] then option['order'] = 4 end
 	if type(option['order']) ~= 'number' then
@@ -329,7 +329,7 @@ function M.new_digitalfilter (option)
 		local A012B012=freq_a012b012_to_zm1_A012B012(a012b012,option)
 		section_funcs[i] = M.new_filter_section(A012B012, option)
 	end
-	if option['type'] == 'chebyschev' and 0 == option['order']%2 then
+	if option['filtertype'] == 'chebyschev' and 0 == option['order']%2 then
 		-- 2.0 chebyschev of even order starts one ripple BENEATH unity gain!
 		local ripple = option['ripple'] or 1
 		local inital_gain = 1 / 10 ^ (0.05*ripple)
@@ -364,7 +364,7 @@ digitalfilter.lua - Butterworth, Chebyschev and Bessel digital filters:
 
  local DF = require 'digitalfilter'
  local my_filter = DF.new_digitalfilter ({   -- returns a closure
-    ['type']        = 'butterworth',
+    ['filtertype']  = 'butterworth',
     ['order']       = 3,
     ['shape']       = 'lowpass',
     ['freq']        = 1000,
@@ -424,10 +424,10 @@ I have found Rorabaugh's book to be the most helpful.
 Various functions, including I<new_digitalfilter(options)>,
 need an argument to set the parameters;
 This argument is a table, with keys
-'type', 'order', 'shape', 'freq' and 'samplerate',
+'filtertype', 'order', 'shape', 'freq' and 'samplerate',
 and for basspass and bandstop also 'Q'
 
-The 'type' can be 'butterworth', 'bessel', or 'chebyschev'.
+The 'filtertype' can be 'butterworth', 'bessel', or 'chebyschev'.
 In the case of 'chebyschev' there is an additional option 'ripple'
 which specifies in decibels the desired ripple in the passband,
 defaulting to 1dB.
@@ -502,7 +502,7 @@ You can then call this closure with your input-signal-value as argument,
 and it will return the filtered-signal-value.
 
 The argument I<options> is a table, with keys
-'type', 'order', 'shape', 'freq' and 'samplerate'.
+'filtertype', 'order', 'shape', 'freq' and 'samplerate'.
 
 If an error is detected, I<new_digitalfilter> returns I<nil>
 and an error message, so it can be used with I<assert>.
@@ -540,10 +540,10 @@ so you should be able to install it with the command:
 
 or:
 
- # luarocks install http://www.pjb.com.au/comp/lua/digitalfilter-2.0-0.rockspec
+ # luarocks install http://www.pjb.com.au/comp/lua/digitalfilter-2.1-0.rockspec
 
 The test script used during development is
-www.pjb.com.au/comp/lua/test_digitalfilteR.lua
+www.pjb.com.au/comp/lua/test_digitalfilter.lua
 
 =head1 AUTHOR
 
@@ -551,6 +551,7 @@ Peter J Billam, http://www.pjb.com.au/comp/contact.html
 
 =head1 CHANGES
 
+ 20170803 2.1 the 'type' option changed to 'filtertype'
  20170802 2.0 chebyschev even orders start at the bottom of their ripple
  20170731 1.4 chebyschev filters added, but even orders not the right shape
  20170730 1.3 finally fix the bessel freq-resp bug

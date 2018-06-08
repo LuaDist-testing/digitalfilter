@@ -104,11 +104,11 @@ ok(eq(freq,1) and eq(Q,math.sqrt(0.5)),
  'pole_pair_to_freq_Q returned freq='..tostring(freq)..'  Q='..tostring(Q))
 
 local sections = assert(DF.freq_sections({
-	['type']        = 'butterworth',
-	['shape']       = 'highpass',
-	['order']       = 2,
-   	['freq']        = 1000,
-  	['samplerate']  = 44100,
+	filtertype  = 'butterworth',
+	shape       = 'highpass',
+	order       = 2,
+   	freq        = 1000,
+  	samplerate  = 44100,
   	-- ['debug']       = true,
 }))
 local a0 = sections[1][1]
@@ -136,13 +136,13 @@ if not ok(eq(freq,1000,0.01) and eq(Q,math.sqrt(0.5),0.0001),
 end
 
 local sections = assert(DF.freq_sections({
-	['type']        = 'butterworth',
-	['shape']       = 'lowpass',
-	['order']       = 2,
-   	['freq']        = 1000,
-  	['samplerate']  = 44100,
-  	['Q']           = 3,
-  	-- ['debug']       = true,
+	filtertype  = 'butterworth',
+	shape       = 'lowpass',
+	order       = 2,
+   	freq        = 1000,
+  	samplerate  = 44100,
+  	Q           = 3,
+  	-- debug       = true,
 }))
 a0 = sections[1][1] ; a1 = sections[1][2] ; a2 = sections[1][3]
 b0 = sections[1][4] ; b1 = sections[1][5] ; b2 = sections[1][6]
@@ -161,11 +161,11 @@ end
 -- os.exit()
 
 local sections = assert(DF.freq_sections({
-	['type']        = 'butterworth',
-	['shape']       = 'lowpass',
-	['order']       = 2,
-   	['freq']        = 22200,
-  	['samplerate']  = 44100,
+	filtertype  = 'butterworth',
+	shape       = 'lowpass',
+	order       = 2,
+   	freq        = 22200,
+  	samplerate  = 44100,
 }))
 a0 = sections[1][1] ; a1 = sections[1][2] ; a2 = sections[1][3]
 b0 = sections[1][4] ; b1 = sections[1][5] ; b2 = sections[1][6]
@@ -176,11 +176,11 @@ end
 --os.exit()
 
 sections = assert(DF.freq_sections({
-	['type']        = 'butterworth',
-	['shape']       = 'bandpass',
-	['order']       = 2,
-   	['freq']        = 22200,
-  	['samplerate']  = 44100,
+	filtertype  = 'butterworth',
+	shape       = 'bandpass',
+	order       = 2,
+   	freq        = 22200,
+  	samplerate  = 44100,
 }))
 a0 = sections[1][1]
 a1 = sections[1][2]
@@ -194,11 +194,11 @@ if not ok(a0==0 and a1==0 and a2==0 and b0==1 and b1==0 and b2==0,
 end
 
 local sections = assert(DF.freq_sections({
-	['type']        = 'butterworth',
-	['shape']       = 'highpass',
-	['order']       = 2,
-   	['freq']        = 22200,
-  	['samplerate']  = 44100,
+	filtertype  = 'butterworth',
+	shape       = 'highpass',
+	order       = 2,
+   	freq        = 22200,
+  	samplerate  = 44100,
 }))
 a0 = sections[1][1]
 a1 = sections[1][2]
@@ -212,11 +212,11 @@ if not ok(a0==1 and a1==0 and a2==0 and b0==1 and b1==0 and b2==0,
 end
 
 local sections = assert(DF.freq_sections({
-	['type']        = 'butterworth',
-	['shape']       = 'bandstop',
-	['order']       = 2,
-   	['freq']        = 22200,
-  	['samplerate']  = 44100,
+	filtertype  = 'butterworth',
+	shape       = 'bandstop',
+	order       = 2,
+   	freq        = 22200,
+  	samplerate  = 44100,
 }))
 a0 = sections[1][1]
 a1 = sections[1][2]
@@ -247,12 +247,12 @@ end
 for i,filtertype in ipairs({'butterworth','chebyschev','bessel'}) do
 	for order = 1,7 do
 		local my_filter = DF.new_digitalfilter ({
-			['type']        = filtertype,
-			['shape']       = 'lowpass',
-			['order']       = order,
-   			['freq']        = 1000,
-  			['samplerate']  = 44100,
-  			['ripple']      = 3.0,
+			filtertype  = filtertype,
+			shape       = 'lowpass',
+			order       = order,
+   			freq        = 1000,
+  			samplerate  = 44100,
+  			ripple      = 3.0,
 		})
 		local a = {}
 		for i = 1,10000 do local dump = my_filter(1.0) end
@@ -279,12 +279,12 @@ for i = 1,2000 do a[#a+1] = my_testsine() end
 for order = 3,7 do
 	local my_sinewave  = new_sinewave(cutoff_freq, samplerate)
 	local my_filter = DF.new_digitalfilter ({
-		['type']        = 'chebyschev',
-		['shape']       = 'lowpass',
-		['order']       = order,
-      		['freq']        = cutoff_freq,
-     		['samplerate']  = samplerate,
-     		['ripple']      = 1.0,
+		filtertype        = 'chebyschev',
+		shape       = 'lowpass',
+		order       = order,
+     	freq        = cutoff_freq,
+    	samplerate  = samplerate,
+    	ripple      = 1.0,
 	})
 	local x = os.clock()
 	for i = 1,samplerate do local dump = my_filter(my_sinewave()) end
@@ -294,7 +294,7 @@ for order = 3,7 do
 	  samplerate,order,elapsed))
 end
 
---os.exit()
+os.exit()
 
 --------------------------------- plot some frequency responses ...
 local frequencies = {
